@@ -2,11 +2,12 @@
 
 require_once( "arc/ARC2.php" );
 require_once( "Graphite/Graphite.php" );
+require_once( "template.php" );
 
-print "<h1>Triple Checker</h1>";
 if( !isset( $_GET['uri'] ) )
 {
-	render_header();
+	render_header("front","RDF Triple-Checker");
+	print "<h1>RDF Triple-Checker</h1>";
 ?>
 <p>This tool helps find typos and common errors in RDF data.</p>
 
@@ -16,9 +17,10 @@ if( !isset( $_GET['uri'] ) )
 <tr>
 <td align='right'>URI/URL:</td><td width='100%'><input id='uri' name='uri' value='' style='width:100%' /></td></tr>
 </table>
-<div><input style='margin-top:0.5em' value='Convert' type='submit' /></div>
+<div><input style='margin-top:0.5em' value='Check' type='submit' /></div>
 </form>
 
+<p>Drag this <a class="bookmarklet" href="javascript:window.location = &quot;http://graphite.ecs.soton.ac.uk/checker/?uri=&quot;+encodeURIComponent(window.location.href);">3-Check</a> bookmarklet to your bookmarks to create a quick button for sending your current URL to triple-checker.</p>
 
 
 <?php
@@ -42,15 +44,26 @@ $parser->parse( $check_uri );
 
 $errors = $parser->getErrors();
 $parser->resetErrors();
+render_header( "results", htmlspecialchars( $check_uri )." - RDF Triple-Checker");
+print "<h1>RDF Triple-Checker</h1>";
+print "<form>
+<table width='80%' style='margin:auto'>
+<tr>
+<td align='right'>URI/URL:</td><td width='100%'><input id='uri' name='uri' value='".htmlspecialchars($check_uri)."' style='width:100%' /></td></tr>
+</table>
+<div><input style='margin-top:0.5em' value='Check Again' type='submit' /></div>
+</form>";
+
 if( sizeof($errors) )
 {
-	show_error( "<h3>Error loading: ".htmlspecialchars($check_uri)."</h3><ul><li>".join( "</li><li>",$errors)."</li></ul>" );
+	print "<div class='error'><h3>Error loading: ".htmlspecialchars($check_uri)."</h3><ul><li>".join( "</li><li>",$errors)."</li></ul></div>";
+	render_footer();
 	exit;
 }
+
 $triples = $parser->getTriples();
-print "<h2>".htmlspecialchars( $check_uri )."</h2>";
 $n = sizeof( $triples );
-show_msg( "Loaded $n triples" );
+print "<div class='message'>Loaded $n triples</div>";
 
 ######################################################
 # Find Namespaces, Classes, Predicates
@@ -68,14 +81,13 @@ foreach( $triples as $t )
 	@$namespaces[$ns]["predicate"][$term]++;
 }
 
-print "<table>";
+print "<table class='results'>";
 print "<tr>";
-print "<th>Namespace</th>";
-print "<th>Term</th>";
-print "<th>Type</th>";
 print "<th>Count</th>";
-print "<th>Legit?</th>";
-print "<th></th>";
+print "<th>Type</th>";
+print "<th style='text-align:right'>Namespace</th>";
+print "<th>Term</th>";
+print "<th colspan='2'>Looks Legit?</th>";
 print "</tr>";
 foreach( $namespaces as $ns=>$terms )
 {	
@@ -87,25 +99,36 @@ foreach( $namespaces as $ns=>$terms )
 	{
 		foreach( $list as $term=>$count )
 		{
-			print "<tr>";
-			print "<td style='text-align:right'>$ns</td>";
-			print "<td>$term</td>";
-			print "<td>$type</td>";
-			print "<td style='text-align:right'>$count</td>";
 			if( !$loaded_ns ) 
 			{
-				print "<td style='background-color: #999;'>?</td>";
-				print "<td style='background-color: #999;'>Namespace did not resolve.</td>";
+				print "<tr class='unknown'>";
 			}
 			elseif( sizeof( $graph->resource( $ns.$term )->relations() ) )
 			{
-				print "<td style='background-color: #9f9;'>OK</td>";
-				print "<td style='background-color: #9f9;'>term is defined by namespace.</td>";
+				print "<tr class='good'>";
 			}
 			else
 			{
-				print "<td style='background-color: #f99;'>X</td>";
-				print "<td style='background-color: #f99;'>term NOT found in namespace.</td>";
+				print "<tr class='bad'>";
+			}
+			print "<td class='count'>$count</td>";
+			print "<td class='type'>$type</td>";
+			print "<td class='namespace'>$ns</td>";
+			print "<td class='term'>$term</td>";
+			if( !$loaded_ns ) 
+			{
+				print "<td class='legit'>?</td>";
+				print "<td class='comment'> - Namespace did not resolve.</td>";
+			}
+			elseif( sizeof( $graph->resource( $ns.$term )->relations() ) )
+			{
+				print "<td class='legit'>OK</td>";
+				print "<td class='comment'> - Term is defined by namespace.</td>";
+			}
+			else
+			{
+				print "<td class='legit'>BAD</td>";
+				print "<td class='comment'> - Term NOT found in namespace.</td>";
 			}
 				
 			print "</tr>";
@@ -113,77 +136,13 @@ foreach( $namespaces as $ns=>$terms )
 	}
 }
 print "</table>";
-
+print "<hr size='1' />";
+render_footer();
 
 exit;
-
-function show_error( $msg )
-{
-	print "<div style='border: solid 1px red; background-color:yellow; padding:0.5em;margin:1em 0 1em 0'>";
-	print $msg;
-	print "</div>";
-}
-function show_msg( $msg )
-{
-	print "<div style='border: solid 1px black; background-color:#ccc; padding:0.5em;margin:1em 0 1em 0'>";
-	print $msg;
-	print "</div>";
-}
 function split_uri( $uri)
 {
 	$uri = preg_match( '/^(.*[#\/])([^#\/]*)$/', $uri, $parts );
 	return array( $parts[1], $parts[2] );
-}
-
-function render_header($title)
-{
-header( "Content-type: text/html; charset:utf-8" );
-?>
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
- "http://www.w3.org/TR/html4/strict.dtd">
-<html>
-<head>
-   <title><?php print $title; ?></title>
-   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-</head>
-<body>
-   <style type='text/css'>
-body {
-	font-family: sans-serif;
-}
-.bookmarklet {
-	border-top: solid 1px #c6c6c6;
-	border-left: solid 1px #c6c6c6;
-	border-bottom: solid 1px #969696;
-	border-right: solid 1px #969696;
-	background-color: #e9e9e9;
-	padding: 2px;
-	text-decoration: none;
-	color: #000000;
-	font-family: sans-serif;
-	font-size: 90%;
-	font-weight: bold;
-}
-a:hover { text-decoration: underline !important; }
-
-body { text-align: center; }
-</style>
-<?php
-}
-
-function render_footer()
-{
-?>
-<p style='font-size: 80%'>stuff2rdf is powered by <a href='http://arc.semsol.org/'>ARC2</a> and hosted by <a href='http://www.ecs.soton.ac.uk/'>ECS</a> at the <a href='http://www.soton.ac.uk/'>University of Southampton</a>.</p>
-<table style='font-size: 80%; margin: auto; text-align:left'>
-<tr><td><tt>
-&lt;<a style='text-decoration: none; color: green; ' href='http://graphite.ecs.soton.ac.uk/stuff2rdf/'>http://graphite.ecs.soton.ac.uk/stuff2rdf/</a>&gt; 
-rdfs:seeAlso
-&lt;<a style='text-decoration: none; color: green; ' href='http://graphite.ecs.soton.ac.uk/sparqlbrowser/'>http://graphite.ecs.soton.ac.uk/sparqlbrowser/</a>&gt; 
-</tt></td></tr>
-
-</table>
-</body></html>
-<?php
 }
 
