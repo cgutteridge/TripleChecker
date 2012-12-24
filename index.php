@@ -38,7 +38,6 @@ $opts = array();
 $opts['http_accept_header']= 'Accept: application/rdf+xml; q=0.9, text/turtle; q=0.8, */*; q=0.1';
 
 $parser = ARC2::getRDFParser($opts);
-# Don't try to load the same URI twice!
 
 $parser->parse( $check_uri );
 
@@ -78,7 +77,7 @@ foreach( $triples as $t )
 		@$namespaces[$ns]["class"][$term]++;
 	}
 	list( $ns, $term ) = split_uri( $t["p"] );
-	@$namespaces[$ns]["predicate"][$term]++;
+	@$namespaces[$ns]["property"][$term]++;
 }
 
 print "<table class='results'>";
@@ -91,9 +90,53 @@ print "<th colspan='2'>Looks Legit?</th>";
 print "</tr>";
 foreach( $namespaces as $ns=>$terms )
 {	
-	$graph = new Graphite();
-	$n = $graph->load( $ns );
-	$loaded_ns = $n > 0;
+	$opts = array();
+	$opts['http_accept_header']= 'Accept: application/rdf+xml; q=0.9, text/turtle; q=0.8, */*; q=0.1';
+	$parser = ARC2::getRDFParser($opts);
+
+	$parser->parse( $ns );
+	$errors = $parser->getErrors();
+	$loaded_ns = true;
+	$terms_in_ns = array();
+	if( sizeof($errors) )
+	{
+		$loaded_ns = false;
+		$ns_error = "Failed to load namespace";
+	}
+	else
+	{
+		$ns_triples = $parser->getTriples();
+	
+		$classes = array(
+	"http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" => "property",
+	"http://www.w3.org/2000/01/rdf-schema#Class" => "class",
+	"http://www.w3.org/2002/07/owl#ObjectProperty" => "property",
+	"http://www.w3.org/2002/07/owl#DatatypeProperty" => "property",
+	"http://www.w3.org/2002/07/owl#Class" => "class",
+		);
+
+		foreach( $ns_triples as $t )
+		{
+			if( $t["p"] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" )
+			{
+				if( isset( $classes[ $t["o"] ] ) )
+				{
+					$terms_in_ns[ $t["s"] ][ $classes[ $t["o"] ] ] = true;
+				}
+			}
+		}
+		if( sizeof( $ns_triples ) == 0 )
+		{
+			$loaded_ns = false;
+			$ns_error = "Namespace returned no triples";
+		}
+		if( sizeof( $terms_in_ns ) == 0 )
+		{
+			$loaded_ns = false;
+			$ns_error = "No vocab terms found in namespace";
+		}
+	}
+
 	
 	foreach( $terms as $type=>$list )
 	{
@@ -103,13 +146,17 @@ foreach( $namespaces as $ns=>$terms )
 			{
 				print "<tr class='unknown'>";
 			}
-			elseif( sizeof( $graph->resource( $ns.$term )->relations() ) )
+			elseif( !isset( $terms_in_ns[$ns.$term] ) )
 			{
-				print "<tr class='good'>";
+				print "<tr class='bad'>";
+			}
+			elseif( !isset( $terms_in_ns[$ns.$term][$type] ) )
+			{
+				print "<tr class='bad'>";
 			}
 			else
 			{
-				print "<tr class='bad'>";
+				print "<tr class='good'>";
 			}
 			print "<td class='count'>$count</td>";
 			print "<td class='type'>$type</td>";
@@ -118,17 +165,22 @@ foreach( $namespaces as $ns=>$terms )
 			if( !$loaded_ns ) 
 			{
 				print "<td class='legit'>?</td>";
-				print "<td class='comment'> - Namespace did not resolve.</td>";
+				print "<td class='comment'> - $ns_error.</td>";
 			}
-			elseif( sizeof( $graph->resource( $ns.$term )->relations() ) )
+			elseif( !isset( $terms_in_ns[$ns.$term] ) )
 			{
-				print "<td class='legit'>OK</td>";
-				print "<td class='comment'> - Term is defined by namespace.</td>";
+				print "<td class='legit'>BAD</td>";
+				print "<td class='comment'> - Term is not defined by namespace.</td>";
+			}
+			elseif( !isset( $terms_in_ns[$ns.$term][$type] ) )
+			{
+				print "<td class='legit'>BAD</td>";
+				print "<td class='comment'> - Term is incorrect type.</td>";
 			}
 			else
 			{
-				print "<td class='legit'>BAD</td>";
-				print "<td class='comment'> - Term NOT found in namespace.</td>";
+				print "<td class='legit'>OK</td>";
+				print "<td class='comment'> - Looks good.</td>";
 			}
 				
 			print "</tr>";
