@@ -88,6 +88,7 @@ print "<th style='text-align:right'>Namespace</th>";
 print "<th>Term</th>";
 print "<th colspan='2'>Looks Legit?</th>";
 print "</tr>";
+$ranges = array();
 foreach( $namespaces as $ns=>$terms )
 {	
 	$opts = array();
@@ -97,7 +98,7 @@ foreach( $namespaces as $ns=>$terms )
 	$parser->parse( $ns );
 	$errors = $parser->getErrors();
 	$loaded_ns = true;
-	$terms_in_ns = array();
+	$ns_terms = array();
 	if( sizeof($errors) )
 	{
 		$loaded_ns = false;
@@ -114,14 +115,19 @@ foreach( $namespaces as $ns=>$terms )
 	"http://www.w3.org/2002/07/owl#DatatypeProperty" => "property",
 	"http://www.w3.org/2002/07/owl#Class" => "class",
 		);
-
+	
+			
 		foreach( $ns_triples as $t )
 		{
+			if( $t["p"] == "http://www.w3.org/2000/01/rdf-schema#range" )
+			{
+				$ranges[ $t["s"] ] = $t["o"];
+			}
 			if( $t["p"] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" )
 			{
 				if( isset( $classes[ $t["o"] ] ) )
 				{
-					$terms_in_ns[ $t["s"] ][ $classes[ $t["o"] ] ] = true;
+					$ns_terms[ $t["s"] ][ $classes[ $t["o"] ] ] = true;
 				}
 			}
 		}
@@ -130,13 +136,12 @@ foreach( $namespaces as $ns=>$terms )
 			$loaded_ns = false;
 			$ns_error = "Namespace returned no triples";
 		}
-		if( sizeof( $terms_in_ns ) == 0 )
+		if( sizeof( $ns_terms ) == 0 )
 		{
 			$loaded_ns = false;
 			$ns_error = "No vocab terms found in namespace";
 		}
 	}
-
 	
 	foreach( $terms as $type=>$list )
 	{
@@ -146,11 +151,11 @@ foreach( $namespaces as $ns=>$terms )
 			{
 				print "<tr class='unknown'>";
 			}
-			elseif( !isset( $terms_in_ns[$ns.$term] ) )
+			elseif( !isset( $ns_terms[$ns.$term] ) )
 			{
 				print "<tr class='bad'>";
 			}
-			elseif( !isset( $terms_in_ns[$ns.$term][$type] ) )
+			elseif( !isset( $ns_terms[$ns.$term][$type] ) )
 			{
 				print "<tr class='bad'>";
 			}
@@ -167,12 +172,12 @@ foreach( $namespaces as $ns=>$terms )
 				print "<td class='legit'>?</td>";
 				print "<td class='comment'> - $ns_error.</td>";
 			}
-			elseif( !isset( $terms_in_ns[$ns.$term] ) )
+			elseif( !isset( $ns_terms[$ns.$term] ) )
 			{
 				print "<td class='legit'>BAD</td>";
 				print "<td class='comment'> - Term is not defined by namespace.</td>";
 			}
-			elseif( !isset( $terms_in_ns[$ns.$term][$type] ) )
+			elseif( !isset( $ns_terms[$ns.$term][$type] ) )
 			{
 				print "<td class='legit'>BAD</td>";
 				print "<td class='comment'> - Term is incorrect type.</td>";
@@ -186,9 +191,28 @@ foreach( $namespaces as $ns=>$terms )
 			print "</tr>";
 		}
 	}
+
 }
 print "</table>";
 print "<hr size='1' />";
+if( sizeof( $ranges ) )
+{
+	foreach( $triples as $t )
+	{
+		# skip triple if the range didn't get defined
+		if( !isset( $ranges[ $t["p"] ] ) ) { continue; }
+		# skip test if the range isn't an XML literal
+		list( $ns, $term ) = split_uri( $ranges[ $t["p"] ] );
+		if( $ns != "http://www.w3.org/2001/XMLSchema#" ) { continue; }
+
+		if( $t["o_datatype"] != $ranges[ $t["p"] ] )	
+		{	
+			print "Expected: ".$ranges[ $t["p"] ]." in triple: ";
+			print_r( $t );
+			print "<hr size='1' />";
+		}
+	}
+}
 render_footer();
 
 exit;
