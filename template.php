@@ -20,6 +20,7 @@ header( "Content-type: text/html; charset:utf-8" );
 function render_footer()
 {
 ?>
+<hr />
 <p style='font-size: 80%'>triple-checker is powered by 
 <a href='http://graphite.ecs.soton.ac.uk/'>Graphite</a>
 <a href='http://arc.semsol.org/'>ARC2</a>

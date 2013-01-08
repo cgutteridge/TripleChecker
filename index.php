@@ -79,6 +79,69 @@ foreach( $triples as $t )
 	list( $ns, $term ) = split_uri( $t["p"] );
 	@$namespaces[$ns]["property"][$term]++;
 }
+ksort( $namespaces );
+
+######################################################
+# Compare namespaces to dictionary
+######################################################
+
+print "<h2>Namespaces</h2>";
+$dictionary = file( "namespaces.tsv" );
+print "<table class='results'>";
+print "<tr>";
+print "<th>Namespace</th>";
+print "<th>Looks Legit?</th>";
+print "</tr>";
+foreach ( $namespaces as $ns=>$terms )
+{
+	$nearest_prefix = null;
+	$nearest_namespace = null;
+	$nearest_score = 9999999;
+	foreach( $dictionary as $row )
+	{
+		if( substr( $row,0,1 ) == "#" ) { continue; }
+		list( $a_prefix, $a_namespace ) = preg_split( "/\t/", chop( $row ) );
+		$score = levenshtein( $ns, $a_namespace );
+		if( $nearest_score > $score ) 
+		{
+			$nearest_score = $score;
+			$nearest_prefix = $a_prefix;
+			$nearest_namespace = $a_namespace;
+		}
+		if( $score == 0 ) { break; }
+	}
+	if( $nearest_score == 0 )
+	{
+		print "<tr class='good'>";
+		print "<td>".htmlspecialchars( $ns )."</td>";
+		print "<td>Matched common namespace. Prefix <strong>$nearest_prefix</strong></td>";
+		print "</tr>";
+	}
+	elseif( $nearest_score > 10 )
+	{
+		print "<tr class='unknown'>";
+		print "<td>".htmlspecialchars( $ns )."</td>";
+		print "<td>No match to common namespaces</td>";
+		print "</tr>";
+	}
+	else
+	{
+		print "<tr class='bad'>";
+		print "<td>".htmlspecialchars( $ns )."</td>";
+		print "<td>Close match to &lt;$nearest_namespace&gt; .. possible typo?</td>";
+		print "</tr>";
+	}
+}
+print "</table>";
+	
+	
+######################################################
+# Check terms in namespaces
+######################################################
+
+	
+
+print "<h2>Terms</h2>";
 
 print "<table class='results'>";
 print "<tr>";
@@ -194,9 +257,11 @@ foreach( $namespaces as $ns=>$terms )
 
 }
 print "</table>";
-print "<hr size='1' />";
+
 if( sizeof( $ranges ) )
 {
+	print "<h2>Datatypes</h2>";
+	$errors = 0;
 	foreach( $triples as $t )
 	{
 		# skip triple if the range didn't get defined
@@ -210,9 +275,16 @@ if( sizeof( $ranges ) )
 			print "Expected: ".$ranges[ $t["p"] ]." in triple: ";
 			print_r( $t );
 			print "<hr size='1' />";
+			++$errors;
 		}
 	}
+	if( $errors == 0 )
+	{
+		print "<p>No obvious datatype issues.</p>";
+	}
 }
+
+	
 render_footer();
 
 exit;
