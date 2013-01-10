@@ -117,18 +117,25 @@ foreach ( $namespaces as $ns=>$terms )
 		print "<td>Matched common namespace. Prefix <strong>$nearest_prefix</strong></td>";
 		print "</tr>";
 	}
-	elseif( $nearest_score > 10 )
+	elseif( $nearest_score <= 3 )
 	{
-		print "<tr class='unknown'>";
+		print "<tr class='bad'>";
 		print "<td>".htmlspecialchars( $ns )."</td>";
-		print "<td>No match to common namespaces</td>";
+		print "<td>VERY close match to &lt;$nearest_namespace&gt; .. probable typo?</td>";
+		print "</tr>";
+	}
+	elseif( $nearest_score <= 12 )
+	{
+		print "<tr class='bad'>";
+		print "<td>".htmlspecialchars( $ns )."</td>";
+		print "<td>Somewhat similar to &lt;$nearest_namespace&gt; .. possible typo?</td>";
 		print "</tr>";
 	}
 	else
 	{
-		print "<tr class='bad'>";
+		print "<tr class='unknown'>";
 		print "<td>".htmlspecialchars( $ns )."</td>";
-		print "<td>Close match to &lt;$nearest_namespace&gt; .. possible typo?</td>";
+		print "<td>No match to common namespaces</td>";
 		print "</tr>";
 	}
 }
