@@ -121,14 +121,14 @@ foreach ( $namespaces as $ns=>$terms )
 	{
 		print "<tr class='bad'>";
 		print "<td>".htmlspecialchars( $ns )."</td>";
-		print "<td>VERY close match to &lt;$nearest_namespace&gt; .. probable typo?</td>";
+		print "<td>VERY close match to &lt;$nearest_namespace&gt; .. probable typo? <span class='diff'>[diff=$nearest_score]</span></td>";
 		print "</tr>";
 	}
-	elseif( $nearest_score <= 12 )
+	elseif( $nearest_score <= 8 )
 	{
 		print "<tr class='bad'>";
 		print "<td>".htmlspecialchars( $ns )."</td>";
-		print "<td>Somewhat similar to &lt;$nearest_namespace&gt; .. possible typo?</td>";
+		print "<td>Somewhat similar to &lt;$nearest_namespace&gt; .. possible typo? <span class='diff'>[diff=$nearest_score]</span></td>";
 		print "</tr>";
 	}
 	else
@@ -183,6 +183,8 @@ foreach( $namespaces as $ns=>$terms )
 	"http://www.w3.org/2000/01/rdf-schema#Class" => "class",
 	"http://www.w3.org/2002/07/owl#ObjectProperty" => "property",
 	"http://www.w3.org/2002/07/owl#DatatypeProperty" => "property",
+	"http://www.w3.org/2002/07/owl#AnnotationProperty" => "property",
+	"http://www.w3.org/2002/07/owl#OntologyProperty" => "property",
 	"http://www.w3.org/2002/07/owl#Class" => "class",
 		);
 	
