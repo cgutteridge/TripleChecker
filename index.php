@@ -110,31 +110,32 @@ foreach ( $namespaces as $ns=>$terms )
 		}
 		if( $score == 0 ) { break; }
 	}
+	$nscell = "<td><a href='$ns'>".htmlspecialchars( $ns )."</a></td>";
 	if( $nearest_score == 0 )
 	{
 		print "<tr class='good'>";
-		print "<td>".htmlspecialchars( $ns )."</td>";
+		print $nscell;
 		print "<td>Matched common namespace. Prefix <strong>$nearest_prefix</strong></td>";
 		print "</tr>";
 	}
 	elseif( $nearest_score <= 3 )
 	{
 		print "<tr class='bad'>";
-		print "<td>".htmlspecialchars( $ns )."</td>";
+		print $nscell;
 		print "<td>VERY close match to &lt;$nearest_namespace&gt; .. probable typo? <span class='diff'>[diff=$nearest_score]</span></td>";
 		print "</tr>";
 	}
 	elseif( $nearest_score <= 8 )
 	{
 		print "<tr class='bad'>";
-		print "<td>".htmlspecialchars( $ns )."</td>";
+		print $nscell;
 		print "<td>Somewhat similar to &lt;$nearest_namespace&gt; .. possible typo? <span class='diff'>[diff=$nearest_score]</span></td>";
 		print "</tr>";
 	}
 	else
 	{
 		print "<tr class='unknown'>";
-		print "<td>".htmlspecialchars( $ns )."</td>";
+		print $nscell;
 		print "<td>No match to common namespaces</td>";
 		print "</tr>";
 	}
@@ -238,7 +239,7 @@ foreach( $namespaces as $ns=>$terms )
 			print "<td class='count'>$count</td>";
 			print "<td class='type'>$type</td>";
 			print "<td class='namespace'>$ns</td>";
-			print "<td class='term'>$term</td>";
+			print "<td class='term'><a href='$ns$term'>$term</a></td>";
 			if( !$loaded_ns ) 
 			{
 				print "<td class='legit'>?</td>";
