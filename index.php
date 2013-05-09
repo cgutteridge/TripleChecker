@@ -1,9 +1,21 @@
 <?php
+require_once( "TripleChecker.php" );
 
-require_once( "arc/ARC2.php" );
-require_once( "Graphite/Graphite.php" );
-require_once( "template.php" );
+# calculate base path
+$path = explode("/", __FILE__);
+array_pop( $path ); # lose filename
+$base_dir = join( "/", $path );
 
+$prefs = array( 
+	"cache"=>"$base_dir/cache",
+	"namespaces"=>"$base_dir/etc/namespaces.tsv",
+	"cacheUnknownNamespaces"=>false,
+	"reloadCache"=>false,
+	"cacheAge"=>120, # seconds,
+);
+
+require_once( "$base_dir/etc/template.php" );
+#$_GET['uri'] = 'https://raw.github.com/structureddynamics/Bibliographic-Ontology-BIBO/1.3/bibo.xml.owl';
 if( !isset( $_GET['uri'] ) )
 {
 	render_header("front","RDF Triple-Checker");
@@ -29,107 +41,61 @@ if( !isset( $_GET['uri'] ) )
 	exit;
 }
 $check_uri = $_GET["uri"];
+$tc = new TripleChecker($prefs);
+$result = $tc->checkURI( $check_uri );
 
-######################################################
-# Load data
-######################################################
 
-$opts = array();
-$opts['http_accept_header']= 'Accept: application/rdf+xml; q=0.9, text/turtle; q=0.8, */*; q=0.1';
-
-$parser = ARC2::getRDFParser($opts);
-
-$parser->parse( $check_uri );
-
-$errors = $parser->getErrors();
-$parser->resetErrors();
-render_header( "results", htmlspecialchars( $check_uri )." - RDF Triple-Checker");
+render_header( "results", htmlspecialchars( $result["uri"] )." - RDF Triple-Checker");
 print "<h1>RDF Triple-Checker</h1>";
 print "<form>
 <table width='80%' style='margin:auto'>
 <tr>
-<td align='right'>URI/URL:</td><td width='100%'><input id='uri' name='uri' value='".htmlspecialchars($check_uri)."' style='width:100%' /></td></tr>
+<td align='right'>URI/URL:</td><td width='100%'><input id='uri' name='uri' value='".htmlspecialchars($result["uri"])."' style='width:100%' /></td></tr>
 </table>
 <div><input style='margin-top:0.5em' value='Check Again' type='submit' /></div>
 </form>";
 
-if( sizeof($errors) )
+if( !$result["loaded"] )
 {
-	print "<div class='error'><h3>Error loading: ".htmlspecialchars($check_uri)."</h3><ul><li>".join( "</li><li>",$errors)."</li></ul></div>";
+	print "<div class='error'><h3>Error loading: ".htmlspecialchars($result["uri"])."</h3><ul><li>".join( "</li><li>",$result["load_errors"])."</li></ul></div>";
 	render_footer();
 	exit;
 }
 
-$triples = $parser->getTriples();
-$n = sizeof( $triples );
-print "<div class='message'>Loaded $n triples</div>";
-
-######################################################
-# Find Namespaces, Classes, Predicates
-######################################################
-
-$namespaces = array();
-foreach( $triples as $t )
-{
-	if( $t["p"] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" )
-	{
-		list( $ns, $term ) = split_uri( $t["o"] );
-		@$namespaces[$ns]["class"][$term]++;
-	}
-	list( $ns, $term ) = split_uri( $t["p"] );
-	@$namespaces[$ns]["property"][$term]++;
-}
-ksort( $namespaces );
-
+print "<div class='message'>Loaded ".$result["n"]." triples</div>";
 ######################################################
 # Compare namespaces to dictionary
 ######################################################
 
 print "<h2>Namespaces</h2>";
-$dictionary = file( "namespaces.tsv" );
 print "<table class='results'>";
 print "<tr>";
 print "<th>Namespace</th>";
 print "<th>Looks Legit?</th>";
 print "</tr>";
-foreach ( $namespaces as $ns=>$terms )
+foreach ( $result["namespaces"] as $ns=>$info )
 {
-	$nearest_prefix = null;
-	$nearest_namespace = null;
-	$nearest_score = 9999999;
-	foreach( $dictionary as $row )
-	{
-		if( substr( $row,0,1 ) == "#" ) { continue; }
-		list( $a_prefix, $a_namespace ) = preg_split( "/\t/", chop( $row ) );
-		$score = levenshtein( $ns, $a_namespace );
-		if( $nearest_score > $score ) 
-		{
-			$nearest_score = $score;
-			$nearest_prefix = $a_prefix;
-			$nearest_namespace = $a_namespace;
-		}
-		if( $score == 0 ) { break; }
-	}
+	$nearest = $info["nearest"];
 	$nscell = "<td><a href='$ns'>".htmlspecialchars( $ns )."</a></td>";
-	if( $nearest_score == 0 )
+	if( $nearest["distance"] == 0 )
 	{
 		print "<tr class='good'>";
 		print $nscell;
-		print "<td>Matched common namespace. Prefix <strong>$nearest_prefix</strong></td>";
+		print "<td>Matched common namespace. Prefix <strong>".$nearest["prefix"]."</strong></td>";
 		print "</tr>";
 	}
-	elseif( $nearest_score <= 3 )
+	elseif( $nearest["distance"] <= 3 )
 	{
 		print "<tr class='bad'>";
 		print $nscell;
-		print "<td>VERY close match to &lt;$nearest_namespace&gt; .. probable typo? <span class='diff'>[diff=$nearest_score]</span></td>";
+		print "<td>VERY close match to &lt;".$nearest["namespace"]."&gt; .. probable typo? <span class='diff'>[diff=".$nearest["distance"]."]</span></td>";
 		print "</tr>";
 	}
-	elseif( $nearest_score <= 8 )
+	elseif( $nearest["distance"] <= 8 )
 	{
 		print "<tr class='bad'>";
 		print $nscell;
-		print "<td>Somewhat similar to &lt;$nearest_namespace&gt; .. possible typo? <span class='diff'>[diff=$nearest_score]</span></td>";
+		print "<td>Somewhat similar to &lt;".$nearest["namespace"]."&gt; .. possible typo? <span class='diff'>[diff=".$nearest["distance"]."]</span></td>";
 		print "</tr>";
 	}
 	else
@@ -141,6 +107,7 @@ foreach ( $namespaces as $ns=>$terms )
 	}
 }
 print "</table>";
+
 	
 	
 ######################################################
@@ -160,63 +127,9 @@ print "<th>Term</th>";
 print "<th colspan='2'>Looks Legit?</th>";
 print "</tr>";
 $ranges = array();
-foreach( $namespaces as $ns=>$terms )
+foreach ( $result["namespaces"] as $ns=>$info )
 {	
-	$opts = array();
-	$opts['http_accept_header']= 'Accept: application/rdf+xml; q=0.9, text/turtle; q=0.8, */*; q=0.1';
-	$parser = ARC2::getRDFParser($opts);
-
-	$parser->parse( $ns );
-	$errors = $parser->getErrors();
-	$loaded_ns = true;
-	$ns_terms = array();
-	if( sizeof($errors) )
-	{
-		$loaded_ns = false;
-		$ns_error = "Failed to load namespace";
-	}
-	else
-	{
-		$ns_triples = $parser->getTriples();
-	
-		$classes = array(
-	"http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" => "property",
-	"http://www.w3.org/2000/01/rdf-schema#Class" => "class",
-	"http://www.w3.org/2002/07/owl#ObjectProperty" => "property",
-	"http://www.w3.org/2002/07/owl#DatatypeProperty" => "property",
-	"http://www.w3.org/2002/07/owl#AnnotationProperty" => "property",
-	"http://www.w3.org/2002/07/owl#OntologyProperty" => "property",
-	"http://www.w3.org/2002/07/owl#Class" => "class",
-		);
-	
-			
-		foreach( $ns_triples as $t )
-		{
-			if( $t["p"] == "http://www.w3.org/2000/01/rdf-schema#range" )
-			{
-				$ranges[ $t["s"] ] = $t["o"];
-			}
-			if( $t["p"] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" )
-			{
-				if( isset( $classes[ $t["o"] ] ) )
-				{
-					$ns_terms[ $t["s"] ][ $classes[ $t["o"] ] ] = true;
-				}
-			}
-		}
-		if( sizeof( $ns_triples ) == 0 )
-		{
-			$loaded_ns = false;
-			$ns_error = "Namespace returned no triples";
-		}
-		if( sizeof( $ns_terms ) == 0 )
-		{
-			$loaded_ns = false;
-			$ns_error = "No vocab terms found in namespace";
-		}
-	}
-	
-	foreach( $terms as $type=>$list )
+	foreach( $info["terms"] as $type=>$list )
 	{
 		foreach( $list as $term=>$count )
 		{
@@ -267,40 +180,36 @@ foreach( $namespaces as $ns=>$terms )
 
 }
 print "</table>";
+print "<pre style='text-align:left'>".htmlspecialchars( print_r( $result ,true))."</pre>";
+exit;
 
-if( sizeof( $ranges ) )
-{
-	print "<h2>Datatypes</h2>";
-	$errors = 0;
-	foreach( $triples as $t )
-	{
-		# skip triple if the range didn't get defined
-		if( !isset( $ranges[ $t["p"] ] ) ) { continue; }
-		# skip test if the range isn't an XML literal
-		list( $ns, $term ) = split_uri( $ranges[ $t["p"] ] );
-		if( $ns != "http://www.w3.org/2001/XMLSchema#" ) { continue; }
-
-		if( $t["o_datatype"] != $ranges[ $t["p"] ] )	
-		{	
-			print "Expected: ".$ranges[ $t["p"] ]." in triple: ";
-			print_r( $t );
-			print "<hr size='1' />";
-			++$errors;
-		}
-	}
-	if( $errors == 0 )
-	{
-		print "<p>No obvious datatype issues.</p>";
-	}
-}
+#if( sizeof( $ranges ) )
+#{
+#	print "<h2>Datatypes</h2>";
+#	$errors = 0;
+#	foreach( $triples as $t )
+#	{
+#		# skip triple if the range didn't get defined
+#		if( !isset( $ranges[ $t["p"] ] ) ) { continue; }
+#		# skip test if the range isn't an XML literal
+#		list( $ns, $term ) = split_uri( $ranges[ $t["p"] ] );
+#		if( $ns != "http://www.w3.org/2001/XMLSchema#" ) { continue; }
+#
+#		if( $t["o_datatype"] != $ranges[ $t["p"] ] )	
+#		{	
+#			print "Expected: ".$ranges[ $t["p"] ]." in triple: ";
+#			print_r( $t );
+#			print "<hr size='1' />";
+#			++$errors;
+#		}
+#	}
+#	if( $errors == 0 )
+#	{
+#		print "<p>No obvious datatype issues.</p>";
+#	}
+#}
 
 	
 render_footer();
 
 exit;
-function split_uri( $uri)
-{
-	$uri = preg_match( '/^(.*[#\/])([^#\/]*)$/', $uri, $parts );
-	return array( $parts[1], $parts[2] );
-}
-
