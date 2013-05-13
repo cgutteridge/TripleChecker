@@ -11,7 +11,7 @@ $prefs = array(
 	"namespaces"=>"$base_dir/etc/namespaces.tsv",
 	"cacheUnknownNamespaces"=>false,
 	"reloadCache"=>false,
-	"cacheAge"=>120, # seconds,
+	"cacheAge"=>14*24*60*60, # seconds,
 );
 
 require_once( "$base_dir/etc/template.php" );
@@ -20,7 +20,7 @@ if( !isset( $_GET['uri'] ) )
 {
 	render_header("front","RDF Triple-Checker");
 	print "<h1>RDF Triple-Checker</h1>";
-?>
+	?>
 <p>This tool helps find typos and common errors in RDF data.</p>
 
 <p>Enter a URI or URL which will resolve to some RDF Triples.</p>
@@ -29,20 +29,31 @@ if( !isset( $_GET['uri'] ) )
 <tr>
 <td align='right'>URI/URL:</td><td width='100%'><input id='uri' name='uri' value='' style='width:100%' /></td></tr>
 </table>
+<div style='margin-top:0.5em'>Output: <label><input checked='checked' type='radio' name='output' value='html' /> HTML</label> <label><input type='radio' name='output' value='json'/> JSON</label></div>
 <div><input style='margin-top:0.5em' value='Check' type='submit' /></div>
 </form>
 
 <p>Drag this <a class="bookmarklet" href="javascript:window.location = &quot;http://graphite.ecs.soton.ac.uk/checker/?uri=&quot;+encodeURIComponent(window.location.href);">3-Check</a> bookmarklet to your bookmarks to create a quick button for sending your current URL to triple-checker.</p>
 
-
-<?php
+	<?php
 	render_footer();
+	# lazy but workable solution to autoselect the input form, and if it doesn't work it's
+	# nott he end of the world, just the end of this HTML document.
 	print "<script type='text/javascript'>document.getElementById('uri').focus()</script>";
 	exit;
 }
+
+
 $check_uri = $_GET["uri"];
 $tc = new TripleChecker($prefs);
 $result = $tc->checkURI( $check_uri );
+if( @$_GET["output"]=="json" )
+{
+	header( "Content-type: application/json" );
+	#print json_encode( $result, JSON_PRETTY_PRINT );
+	print json_encode( $result );
+	exit;
+}
 
 
 render_header( "results", htmlspecialchars( $result["uri"] )." - RDF Triple-Checker");
@@ -51,7 +62,9 @@ print "<form>
 <table width='80%' style='margin:auto'>
 <tr>
 <td align='right'>URI/URL:</td><td width='100%'><input id='uri' name='uri' value='".htmlspecialchars($result["uri"])."' style='width:100%' /></td></tr>
+
 </table>
+<div style='margin-top:0.5em'>Output: <label><input checked='checked' type='radio' name='output' value='html' /> HTML</label> <label><input type='radio' name='output' value='json'/> JSON</label></div>
 <div><input style='margin-top:0.5em' value='Check Again' type='submit' /></div>
 </form>";
 
@@ -62,7 +75,7 @@ if( !$result["loaded"] )
 	exit;
 }
 
-print "<div class='message'>Loaded ".$result["n"]." triples</div>";
+print "<div class='message'>Loaded ".$result["triples_count"]." triples</div>";
 ######################################################
 # Compare namespaces to dictionary
 ######################################################
@@ -75,36 +88,40 @@ print "<th>Looks Legit?</th>";
 print "</tr>";
 foreach ( $result["namespaces"] as $ns=>$info )
 {
-	$nearest = $info["nearest"];
 	$nscell = "<td><a href='$ns'>".htmlspecialchars( $ns )."</a></td>";
-	if( $nearest["distance"] == 0 )
+
+	if( $info["found"] )
 	{
 		print "<tr class='good'>";
 		print $nscell;
-		print "<td>Matched common namespace. Prefix <strong>".$nearest["prefix"]."</strong></td>";
+		print "<td>Matched common namespace. Prefix <strong>".$info["prefix"]."</strong></td>";
 		print "</tr>";
+		continue;
 	}
-	elseif( $nearest["distance"] <= 3 )
+	
+	$nearest = $info["nearest"];
+	if( $nearest["distance"] <= 3 )
 	{
 		print "<tr class='bad'>";
 		print $nscell;
 		print "<td>VERY close match to &lt;".$nearest["namespace"]."&gt; .. probable typo? <span class='diff'>[diff=".$nearest["distance"]."]</span></td>";
 		print "</tr>";
+		continue;
 	}
-	elseif( $nearest["distance"] <= 8 )
+
+	if( $nearest["distance"] <= 8 )
 	{
 		print "<tr class='bad'>";
 		print $nscell;
 		print "<td>Somewhat similar to &lt;".$nearest["namespace"]."&gt; .. possible typo? <span class='diff'>[diff=".$nearest["distance"]."]</span></td>";
 		print "</tr>";
+		continue;
 	}
-	else
-	{
-		print "<tr class='unknown'>";
-		print $nscell;
-		print "<td>No match to common namespaces</td>";
-		print "</tr>";
-	}
+
+	print "<tr class='unknown'>";
+	print $nscell;
+	print "<td>No match to common namespaces</td>";
+	print "</tr>";
 }
 print "</table>";
 
@@ -126,61 +143,62 @@ print "<th style='text-align:right'>Namespace</th>";
 print "<th>Term</th>";
 print "<th colspan='2'>Looks Legit?</th>";
 print "</tr>";
-$ranges = array();
-foreach ( $result["namespaces"] as $ns=>$info )
+foreach ( $result["namespaces"] as $ns=>$nsinfo )
 {	
-	foreach( $info["terms"] as $type=>$list )
+	foreach( $nsinfo["terms"] as $term=>$terminfo )
 	{
-		foreach( $list as $term=>$count )
+		if( !$nsinfo["loaded"] ) 
 		{
-			if( !$loaded_ns ) 
-			{
-				print "<tr class='unknown'>";
-			}
-			elseif( !isset( $ns_terms[$ns.$term] ) )
-			{
-				print "<tr class='bad'>";
-			}
-			elseif( !isset( $ns_terms[$ns.$term][$type] ) )
-			{
-				print "<tr class='bad'>";
-			}
-			else
-			{
-				print "<tr class='good'>";
-			}
-			print "<td class='count'>$count</td>";
-			print "<td class='type'>$type</td>";
-			print "<td class='namespace'>$ns</td>";
-			print "<td class='term'><a href='$ns$term'>$term</a></td>";
-			if( !$loaded_ns ) 
-			{
-				print "<td class='legit'>?</td>";
-				print "<td class='comment'> - $ns_error.</td>";
-			}
-			elseif( !isset( $ns_terms[$ns.$term] ) )
-			{
-				print "<td class='legit'>BAD</td>";
-				print "<td class='comment'> - Term is not defined by namespace.</td>";
-			}
-			elseif( !isset( $ns_terms[$ns.$term][$type] ) )
-			{
-				print "<td class='legit'>BAD</td>";
-				print "<td class='comment'> - Term is incorrect type.</td>";
-			}
-			else
-			{
-				print "<td class='legit'>OK</td>";
-				print "<td class='comment'> - Looks good.</td>";
-			}
-				
-			print "</tr>";
+			print "<tr class='unknown'>";
 		}
+		elseif( $terminfo["found"] )
+		{
+			print "<tr class='good'>";
+		}
+		else
+		{
+			print "<tr class='bad'>";
+		}
+		print "<td class='count'>".$terminfo["count"]."</td>";
+		print "<td class='type'>".$terminfo["type"]."</td>";
+		print "<td class='ns' style='text-align:right;font-size:80%'>".$ns."</td>";
+		print "<td class='term'><a href='$ns$term'>$term</a></td>";
+		if( !$nsinfo["loaded"] ) 
+		{
+			print "<td class='legit'>?</td>";
+			print "<td class='comment'> - Namespace not loaded</td>";
+		}
+		elseif( $terminfo["found"] )
+		{
+			print "<td class='legit'>OK</td>";
+			print "<td class='comment'> - Looks good.</td>";
+		}
+		elseif( $terminfo["nearest"]["distance"] <= 3 )
+		{
+			print "<td class='legit'>ERROR</td>";
+			print "<td class='comment'> - VERY close match to &quot;".$terminfo["nearest"]["term"]."&quot; .. probable typo? <span class='diff'>[diff=".$terminfo["nearest"]["distance"]."]</span></td>";
+		}
+		elseif( $terminfo["nearest"]["distance"] <= 8 )
+		{
+			print "<td class='legit'>ERROR</td>";
+			print "<td class='comment'> - Possible match to &quot;".$terminfo["nearest"]["term"]."&quot; .. probable typo? <span class='diff'>[diff=".$terminfo["nearest"]["distance"]."]</span></td>";
+		}
+		else
+		{
+			print "<td class='legit'>ERROR</td>";
+			print "<td class='comment'> - No near matches found</td>";
+		}
+
+			
+		print "</tr>";
 	}
 
 }
 print "</table>";
-print "<pre style='text-align:left'>".htmlspecialchars( print_r( $result ,true))."</pre>";
+#print "<pre style='text-align:left'>".htmlspecialchars( print_r( $result ,true))."</pre>";
+	
+render_footer();
+
 exit;
 
 #if( sizeof( $ranges ) )
@@ -209,7 +227,3 @@ exit;
 #	}
 #}
 
-	
-render_footer();
-
-exit;

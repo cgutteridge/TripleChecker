@@ -28,22 +28,29 @@ class TripleChecker {
 		$r["loaded"] = (sizeof($r["load_errors"]) == 0);
 		$parser->resetErrors();
 		if( ! $r["loaded"] ) { return $r; }
+		unset( $r["load_errors"] );
 	
 		$triples = $parser->getTriples();
-		$r["n"] = sizeof( $triples );
+		$r["triples_count"] = sizeof( $triples );
 		
 		# Find Namespaces, Classes, Predicates
-		
+	
+		# Assumption: terms are never both classes and properties
+		# (a later version may check for this)	
 		$r["namespaces"] = array();
 		foreach( $triples as $t )
 		{
+
 			if( $t["p"] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" )
 			{
 				list( $ns, $term ) = TripleChecker::splitURI( $t["o"] );
-				@$r["namespaces"][$ns]["classes"][$term]["count"]++;
+
+				@$r["namespaces"][$ns]["terms"][$term]["count"]++;
+				@$r["namespaces"][$ns]["terms"][$term]["type"] = "class";
 			}
 			list( $ns, $term ) = TripleChecker::splitURI( $t["p"] );
-			@$r["namespaces"][$ns]["properties"][$term]["count"]++;
+			@$r["namespaces"][$ns]["terms"][$term]["count"]++;
+			@$r["namespaces"][$ns]["terms"][$term]["type"] = "property";
 		}
 		ksort( $r["namespaces"] );
 	
@@ -54,6 +61,7 @@ class TripleChecker {
 			$r["namespaces"][$ns]["nearest"]["prefix"] = null;
 			$r["namespaces"][$ns]["nearest"]["namespace"] = null;
 			$r["namespaces"][$ns]["nearest"]["distance"] = 9999999;
+			$r["namespaces"][$ns]["found"] = false;
 			foreach( $dictionary as $row )
 			{
 				if( substr( $row,0,1 ) == "#" ) { continue; }
@@ -65,7 +73,14 @@ class TripleChecker {
 					$r["namespaces"][$ns]["nearest"]["prefix"] = $a_prefix;
 					$r["namespaces"][$ns]["nearest"]["namespace"] = $a_namespace;
 				}
-				if( $distance == 0 ) { break; }
+				if( $distance == 0 ) 
+				{ 
+					$r["namespaces"][$ns]["found"] = true;
+					$r["namespaces"][$ns]["prefix"] = $r["namespaces"][$ns]["nearest"]["prefix"];
+					unset( $r["namespaces"][$ns]["nearest"] );
+					
+					break; 
+				}
 			}
 	
 			# do we cache this namespace?
@@ -90,7 +105,7 @@ class TripleChecker {
 	
 			if( !$nsUsesCache )
 			{
-				$ns_terms = $this->downloadNamespace( $r, $ns );
+				$ns_docinfo = $this->downloadNamespace( $r, $ns );
 			}
 			else
 			{
@@ -113,17 +128,19 @@ class TripleChecker {
 	
 				if( $loadCache )
 				{
-					$ns_terms = json_decode( file_get_contents( $cacheFile ) );
+					$ns_docinfo = json_decode( file_get_contents( $cacheFile ), true );
+					$r["namespaces"][$ns]["loaded"] = true;
 				}
 				else
 				{
-					$ns_terms = $this->downloadNamespace( $r, $ns );
+					$ns_docinfo = $this->downloadNamespace( $r, $ns );
 	
 					if( $r["namespaces"][$ns]["loaded"] )
 					{
 						# write cache
+						unlink( $cacheFile );
 						$fh = fopen( $cacheFile, "w" );
-						fwrite( $fh, json_encode( $ns_terms ) );
+						fwrite( $fh, json_encode( $ns_docinfo ) );
 						fclose( $fh );	
 					}
 				}
@@ -132,14 +149,41 @@ class TripleChecker {
 	
 			# if it's loaded OK with no terms, it's OK to cache that fact, but 
 			# we don't consider it loaded for the next step's purposes	
-			if( sizeof( $ns_terms ) == 0 )
+			if( sizeof( $ns_docinfo ) == 0 )
 			{
 				$r["namespaces"][$ns]["loaded"] = false;
-				$r["namespaces"][$ns]["status"] = "No vocab terms found in namespace";
+				$r["namespaces"][$ns]["load_errors"] = array( "No vocab terms found in namespace" );
 				continue;
 			}
+			foreach( $r["namespaces"][$ns]["terms"] as $term=>&$info )
+			{
+				# check through the terms in this namespace and compare 
+				# distance 
 
-print "<pre style='text-align:left'>".htmlspecialchars( print_r( $ns_terms ,true))."</pre>";
+				$info["nearest"]["term"] = null;
+				$info["nearest"]["distance"] = 9999999;
+				$info["found"] = false;
+#print_( $ns_terms[$type]);
+				foreach( $ns_docinfo["terms"] as $term_from_ns=>$type )
+				{
+					$distance = levenshtein( $ns.$term, $term_from_ns );
+					if( $info["nearest"]["distance"] > $distance ) 
+					{
+						list( $near_ns, $near_term ) = TripleChecker::splitURI( $term_from_ns );
+						$info["nearest"]["term"] = $near_term;
+						$info["nearest"]["namespace"] = $near_ns;
+						$info["nearest"]["type"] = $type;
+						$info["nearest"]["distance"] = $distance;
+					}
+					if( $distance == 0 ) 
+					{ 
+						unset( $info["nearest"] );
+						$info["found"] = true;
+						break; 
+					}
+				}
+#exit
+			}
 		}
 	
 		return $r;
@@ -158,26 +202,31 @@ print "<pre style='text-align:left'>".htmlspecialchars( print_r( $ns_terms ,true
 
 		if( ! $r["namespaces"][$ns]["loaded"] )
 		{
-			$r["namespaces"][$ns]["status"] = "Failed to load namespace";
 			return;
 		}
+		unset( $r["namespaces"][$ns]["load_errors"] );
 		
 		$ns_triples = $parser->getTriples();
 		if( sizeof( $ns_triples ) == 0 )
 		{
 			$r["namespaces"][$ns]["loaded"] = false;
-			$r["namespaces"][$ns]["status"] = "Found no triples";
+			$r["namespaces"][$ns]["load_errors"] = array( "Found no triples" );
 			return;
 		}
 		
 		$termtypes = array(
-			"http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" => "properties",
-			"http://www.w3.org/2000/01/rdf-schema#Class" => "classes",
-			"http://www.w3.org/2002/07/owl#ObjectProperty" => "properties",
-			"http://www.w3.org/2002/07/owl#DatatypeProperty" => "properties",
-			"http://www.w3.org/2002/07/owl#AnnotationProperty" => "properties",
-			"http://www.w3.org/2002/07/owl#OntologyProperty" => "properties",
-			"http://www.w3.org/2002/07/owl#Class" => "classes",
+			"http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" => "property",
+			"http://www.w3.org/2000/01/rdf-schema#Class" => "class",
+			"http://www.w3.org/2002/07/owl#ObjectProperty" => "property",
+			"http://www.w3.org/2002/07/owl#DatatypeProperty" => "property",
+			"http://www.w3.org/2002/07/owl#AnnotationProperty" => "property",
+			"http://www.w3.org/2002/07/owl#OntologyProperty" => "property",
+			"http://www.w3.org/2002/07/owl#Class" => "class",
+			"http://www.daml.org/2001/03/daml+oil#Class" => "class",
+			"http://www.daml.org/2001/03/daml+oil#DatatypeProperty" => "property",
+			"http://www.daml.org/2001/03/daml+oil#ObjectProperty" => "property",
+			"http://www.daml.org/2001/03/daml+oil#Property" => "property",
+			
 			);
 
 		$ns_terms = array();				
@@ -191,7 +240,7 @@ print "<pre style='text-align:left'>".htmlspecialchars( print_r( $ns_terms ,true
 			{
 				if( isset( $termtypes[ $t["o"] ] ) )
 				{
-					$ns_terms[ $termtypes[ $t["o"] ] ][ $t["s"] ] = true;
+					$ns_terms["terms"][ $t["s"] ] = $termtypes[ $t["o"] ];
 				}
 			}
 		}
