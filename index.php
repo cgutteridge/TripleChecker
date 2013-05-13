@@ -1,10 +1,11 @@
 <?php
-require_once( "TripleChecker.php" );
 
 # calculate base path
 $path = explode("/", __FILE__);
 array_pop( $path ); # lose filename
 $base_dir = join( "/", $path );
+
+require_once( "$base_dir/lib/TripleChecker.php" );
 
 $prefs = array( 
 	"cache"=>"$base_dir/cache",

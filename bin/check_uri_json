@@ -1,0 +1,30 @@
+#!/usr/bin/php
+<?php
+
+# calculate base path
+$path = explode("/", __FILE__);
+array_pop( $path ); # lose filename
+array_pop( $path ); # lose bin
+$base_dir = join( "/", $path );
+
+require_once( "$base_dir/lib/TripleChecker.php" );
+
+$prefs = array( 
+	"cache"=>"$base_dir/cache",
+	"namespaces"=>"$base_dir/etc/namespaces.tsv",
+	"cacheUnknownNamespaces"=>false,
+	"reloadCache"=>false,
+	"cacheAge"=>14*24*60*60, # seconds,
+);
+
+if( sizeof( $argv ) != 2 )
+{
+	print "Usage: ".$argv[0]." <uri>\n";
+}
+
+$check_uri = $argv[1];
+
+$tc = new TripleChecker($prefs);
+$result = $tc->checkURI( $check_uri );
+print json_encode( $result );
+exit;
