@@ -1,0 +1,65 @@
+#!/usr/bin/php
+<?php
+
+# calculate base path
+$path = explode("/", __FILE__);
+array_pop( $path ); # lose filename
+array_pop( $path ); # lose bin
+$base_dir = join( "/", $path );
+
+require_once( "$base_dir/lib/TripleChecker.php" );
+
+$prefs = array( 
+	"cache"=>"$base_dir/cache",
+	"namespaces"=>"$base_dir/etc/namespaces.tsv",
+	"cacheUnknownNamespaces"=>false,
+	"reloadCache"=>false,
+	"cacheAge"=>14*24*60*60, # seconds,
+);
+
+if( sizeof( $argv ) != 2 )
+{
+	print "Usage: ".$argv[0]." <uri>\n";
+}
+
+$check_uri = $argv[1];
+
+$tc = new TripleChecker($prefs);
+$result = $tc->checkURI( $check_uri );
+
+if( !$result["loaded"] )
+{
+	print "Error loading: ".$result["uri"]."\n* ".join( "\n* ",$result["load_errors"])."\n";
+	exit;
+}
+
+foreach ( $result["namespaces"] as $ns=>$info )
+{
+	if( $info["found"] ) { continue; }
+	if( $info["loaded"] ) { continue; }
+
+	$nearest = $info["nearest"];
+	print "$ns not in dictionary or loaded\n";
+	if( $nearest["distance"] <= 8 )
+	{
+		print ".. distance ".$nearest["distance"]." from ".$nearest["namespace"]."\n";		
+	}
+}
+
+	
+foreach ( $result["namespaces"] as $ns=>$nsinfo )
+{	
+	foreach( $nsinfo["terms"] as $term=>$terminfo )
+	{
+		if( !$nsinfo["loaded"] ) { continue; }
+		if( $terminfo["found"] ) { continue; }
+	
+		print $terminfo["type"]." : $ns$term not found.\n";
+		if( $terminfo["nearest"]["distance"] <= 8 )
+		{
+			print ".. distance ".$terminfo["nearest"]["distance"]." from \"".$terminfo["nearest"]["term"]."\"\n";
+		}	
+	}
+}
+exit;
+
