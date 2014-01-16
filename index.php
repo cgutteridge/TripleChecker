@@ -197,34 +197,48 @@ foreach ( $result["namespaces"] as $ns=>$nsinfo )
 }
 print "</table>";
 #print "<pre style='text-align:left'>".htmlspecialchars( print_r( $result ,true))."</pre>";
-	
+
+if( sizeof( $result["datatype_errors"] ) )
+{
+	print "<h2>Literals</h2>";
+
+	print "<table class='results'>";
+	print "<tr>";
+	print "<th>Datatype</th>";
+	print "<th>Value</th>";
+	print "<th>Issues</th>";
+	print "</tr>";
+
+	foreach( $result["datatype_errors"] as $datatype=>$datatype_errors )
+	{
+		$rows = 0;
+		foreach( $datatype_errors as $literal=>$issues ) { $rows+=sizeof($issues); }
+		print "<tr class='bad'>";
+		print "<td class='datatype' rowspan='$rows'>".$datatype."</td>";
+		$first_value = true;
+		foreach( $datatype_errors as $literal=>$issues )
+		{
+			if( !$first_value ) { print "</tr><tr class='bad'>"; }
+			print "<td rowspan='".sizeof($issues)."'>\"".htmlspecialchars($literal)."\"</td>";
+			$first_issue = true;
+			foreach( $issues as $issue=>$count )
+			{
+				if( !$first_issue ) { print "</tr><tr class='bad'>"; }
+				print "<td>";
+				print $issue;
+				if( $count > 1 ) { print " ($count counts)"; }
+				print "</td>";
+				print "</tr>";
+				$first_issue = false;
+			}
+			$first_value = false;
+		}
+	}
+	print "</table>";
+}
+
+
 render_footer();
 
 exit;
-
-#if( sizeof( $ranges ) )
-#{
-#	print "<h2>Datatypes</h2>";
-#	$errors = 0;
-#	foreach( $triples as $t )
-#	{
-#		# skip triple if the range didn't get defined
-#		if( !isset( $ranges[ $t["p"] ] ) ) { continue; }
-#		# skip test if the range isn't an XML literal
-#		list( $ns, $term ) = split_uri( $ranges[ $t["p"] ] );
-#		if( $ns != "http://www.w3.org/2001/XMLSchema#" ) { continue; }
-#
-#		if( $t["o_datatype"] != $ranges[ $t["p"] ] )	
-#		{	
-#			print "Expected: ".$ranges[ $t["p"] ]." in triple: ";
-#			print_r( $t );
-#			print "<hr size='1' />";
-#			++$errors;
-#		}
-#	}
-#	if( $errors == 0 )
-#	{
-#		print "<p>No obvious datatype issues.</p>";
-#	}
-#}
 

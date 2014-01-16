@@ -12,6 +12,119 @@ class TripleChecker {
 		$this->prefs = $prefs;
 	}
 
+	public function datatypeConfig()
+	{
+	## ^ and $ will be added automatically	
+	  $xsd = "http://www.w3.org/2001/XMLSchema#";
+	  return array(
+		"${xsd}unsignedLong"=>array(
+			"exp"=>"\d{1,10}",
+			"min"=>0, "max"=>18446744073709551615
+		),
+		"${xsd}unsignedInt"=>array(
+			"exp"=>"\d+",
+			"min"=>0, "max"=>4294967295,
+		),
+		"${xsd}unsignedShort"=>array(
+			"exp"=>"\d{1,4}|[0-5]\d{4}|6[0-4]\d{3}|65[0-4]\d\d|655[0-2]\d|6553[0-5]",
+			"min"=>0, "max"=>65535
+		),
+		"${xsd}unsignedByte"=>array(
+			"exp"=>"[01]\d\d|2[0-4]\d|25[0-5]",
+			"min"=>0, "max"=>255,
+		),
+		"${xsd}long"=>array(
+			"exp"=>"(\+|-)?\d+",
+			"min"=>-9223372036854775808, "max"=>9223372036854775807
+		),
+		"${xsd}int"=>array(
+			"exp"=>"(\+|-)?\d+",
+			"min"=>-2147483648, "max"=>2147483647
+		),
+		"${xsd}byte"=>array(
+			"exp"=>"(\+|-)?\d+",
+			"min"=>-9223372036854775808, "max"=>9223372036854775807
+		),
+		"${xsd}short"=>array(
+			"exp"=>"(\+|-)?\d+",
+			"min"=>-32768, "max"=>32767
+		),
+
+		"${xsd}nonPositiveInteger"=>array(
+			"exp"=>"-?\d+",
+			"max"=>0,
+		),
+		"${xsd}nonNegativeInteger"=>array(
+			"exp"=>"\d+",
+			"min"=>0,
+		),
+		"${xsd}negativeInteger"=>array(
+			"exp"=>"-\d+",
+			"max"=>-1,
+		),
+		"${xsd}positiveInteger"=>array(
+			"exp"=>"\d+",
+			"min"=>1,
+		),
+		"${xsd}integer"=>array(
+			"exp"=>"(\+|-)?\d+"
+		),
+
+		"${xsd}decimal"=>array(
+			"exp"=>"(\+|-)?\d+(\.\d+)?"
+		),
+		"${xsd}double"=>array(
+			"exp"=>"-?INF|NaN|(\+|-)?\d+(\.\d+)?([Ee](\+|-)?\d+)?"
+		),
+		"${xsd}float"=>array(
+			"exp"=>"-?INF|NaN|(\+|-)?\d+(\.\d+)?([Ee](\+|-)?\d+)?"
+		),
+#xsd:float 	xsd:float 	m = first capture group (mantissa), e = third capture group (exponent):
+#m < 2^2 AND -149 <= e <= 104
+#xsd:double 	xsd.float 	m and e as in xsd:float:
+#m < 2^53 AND -1075 <= e < 970 
+
+
+		"${xsd}gYearMonth"=>array(
+			"exp"=>"-?\d{4,}-(0[1-9]|1[0-2])((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+		"${xsd}time"=>array(
+			"exp"=>"\d\d:\d\d:\d\d(\.\d+)?((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+		"${xsd}date"=>array(
+			"exp"=>"-?\d{4,}-(0[1-9]|1[0-2])-(0[1-9]|(1|2)[0-9]|3[01])((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+		"${xsd}boolean"=>array(
+			"exp"=>"(true|false|0|1)"
+		),
+		"${xsd}gYear"=>array(
+			"exp"=>"-?\d{4,}((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+		"${xsd}duration"=>array(
+			"exp"=>"-?P([0-9]+Y)?([0-9]+M)?([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+(.[0-9]+)?+S)?)?"
+		),
+		"${xsd}gDay"=>array(
+			"exp"=>"---(0[1-9]|(1|2)[0-9]|3[01])((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+		"${xsd}hexBinary"=>array(
+			"exp"=>"([\dABCDEF]{2})+"
+		),
+		"${xsd}gMonthDay"=>array(
+			"exp"=>"--(0[1-9]|1[0-2])-(0[1-9]|(1|2)[0-9]|3[01])((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+		"${xsd}dateTime"=>array(
+			"exp"=>"-?\d{4,}-(0[1-9]|1[0-2])-(0[1-9]|(1|2)[0-9]|3[01])T\d\d:\d\d:\d\d(\.\d+)?((\+|-)(0[0-9]|1[0-4]):([0-5][0-9])|Z)?"
+		),
+
+		"${xsd}base64Binary"=>array(
+			"exp"=>"([a-z]|[A-Z]|[0-9]|\+|/|=|\s)*"
+		),
+	);
+	}
+
+
+
+
 	public function checkURI( $uri )
 	{
 		$dictionary = file( $this->prefs["namespaces"] );
@@ -33,6 +146,34 @@ class TripleChecker {
 		$triples = $parser->getTriples();
 		$r["triples_count"] = sizeof( $triples );
 		
+		$datatypes = $this->datatypeConfig();
+		$r["datatype_errors"] = array();
+		foreach( $triples as $t )
+		{
+			if( $t["o_type"] != "literal" ) { continue; }
+			if( !array_key_exists( $t["o_datatype"], $datatypes ) ) { continue; }
+			$dt = $datatypes[ $t["o_datatype"] ];
+			if( $dt["exp"] )
+			{
+				$result = preg_match( "/^${dt['exp']}$/", $t["o"], $bits );
+				if( !$result )
+				{
+					$msg = "Literal value does not match datatype.";
+					$r["datatype_errors"][ $t["o_datatype"] ][ $t["o"] ][ $msg ]++;
+				}
+				if( isset( $dt["max"] ) && $t["o"] > $dt["max"] )
+				{
+					$msg = "Literal value should not be greater than ${dt['max']}.";
+					$r["datatype_errors"][ $t["o_datatype"] ][ $t["o"] ][ $msg ]++;
+				}
+				if( isset( $dt["min"] ) && $t["o"] < $dt["min"] )
+				{
+					$msg = "Literal value should not be less than ${dt['min']}.";
+					$r["datatype_errors"][ $t["o_datatype"] ][ $t["o"] ][ $msg ]++;
+				}
+			}
+		}
+
 		# Find Namespaces, Classes, Predicates
 	
 		# Assumption: terms are never both classes and properties

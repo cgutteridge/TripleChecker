@@ -70,6 +70,9 @@ table.results td.namespace {
 	font-size: 80%;
 	text-align: right;
 }
+table.results td.datatype {
+	vertical-align: top;
+}
 	
 
 .error {
